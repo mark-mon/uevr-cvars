@@ -1,6 +1,7 @@
 This project allows you to load cvars and exec commands into your UEVR game. This way UEVR profiles can have the cvars distributed with them rather than require the user to make engine.ini changes.
 This requires a cvars.txt file to be next to cvars.dll. The format of that files is:
 
+<code>
 # This lets you script cvar and console commands form a file. The commands must go in this text file which must be
 # present in the same plugins folder with cvars.dll.
 #
@@ -21,3 +22,4 @@ This requires a cvars.txt file to be next to cvars.dll. The format of that files
 #r.LandscapeLODBias=999
 #r.SkeletalMeshLODBias=-999
 exec=stat fps
+</code>
