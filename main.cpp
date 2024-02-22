@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <memory>
+#include <chrono>
 
 #include "uevr/Plugin.hpp"
 
@@ -11,6 +12,19 @@
 #define MAX_PATH_SIZE 512
 #define MAX_LINE_SIZE 256
 
+#if 0
+on_initialize() {
+    m_next_time = std::chrono::high_resolution_clock::now() + std::chrono::seconds(10);
+}
+
+on_pre_engine_tick() {
+    const auto now = std::chrono::high_resolution_clock::now();
+
+    if (now >= m_next_time) {
+        do_thing();
+    }
+}
+#endif
 
 using namespace uevr;
 
@@ -67,28 +81,10 @@ public:
 
         // Unit tests for the API basically.
         if (once) {
-			DWORD ThreadId  = 0;
-            once = false;
-			
-			// Create a separate thread to handle the cvar setting routine so we don't take up time
-			// in the render thread especially since we can have delays added by the user in the script.
-			CreateThread(NULL,
-						 0,
-						 &TimerCallbackThreadProc,
-						 this,
-						 0,
-						 &ThreadId);
+			ApplyCvarScript();
 		}
 	}
 	
-	//***************************************************************************************************
-	// Running the cvars as a thread so that we don't hang the engine tick function.
-	//***************************************************************************************************
-    static DWORD WINAPI TimerCallbackThreadProc(LPVOID lpParameter) {
-		((CVarPlugin*)lpParameter)->ApplyCvarScript();
-		return 0;
-    }
-  
 	//***************************************************************************************************
 	// Applies the actual cvar script called from the thread callback.
 	//***************************************************************************************************
