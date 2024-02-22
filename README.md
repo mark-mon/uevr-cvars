@@ -13,7 +13,7 @@ This requires a cvars.txt file to be next to cvars.dll. The format of that files
 # Commands supported are:
 #   cvar=value
 #   exec=command
-#   delay=millseconds <-- use only if you need a delay before a command or cvar is issued. Not common.
+#   
 #
 # exec=stat fps  <-- this enables unreal engine FPS counter.
 # r.PostProcessAAQuality=1  <-- this is how you would set a cvar.
