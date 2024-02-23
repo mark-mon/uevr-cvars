@@ -8,7 +8,7 @@
 #include "uevr/Plugin.hpp"
 
 #define MAX_CVARS	256
-#define MAX_ELEMENT_LEN 64
+#define MAX_ELEMENT_LEN 128
 #define MAX_PATH_SIZE 512
 #define MAX_LINE_SIZE 256
 
@@ -81,6 +81,7 @@ public:
 
         // Unit tests for the API basically.
         if (once) {
+            once=false;
 			ApplyCvarScript();
 		}
 	}
@@ -162,6 +163,7 @@ public:
 		int EqualsPosition = 0;
 		int Length = 0;
 		int i = 0;
+        int LineNumber = 0;
 		
 
 		FILE* fp = fopen(m_Path,"r");
@@ -172,6 +174,7 @@ public:
 		}
 			
 		while(!feof(fp)) {
+            LineNumber++;
 			ZeroMemory(Line, sizeof(wchar_t) * MAX_LINE_SIZE);
 			if(fgetws(Line, MAX_LINE_SIZE-1, fp) == NULL) break;
 
@@ -181,7 +184,8 @@ public:
 			if(Length < 3) continue;
 			if(Line[0] == L' ') continue;
 
-			API::get()->log_info("cvars.dll: Processing config line: %ls", Line);   
+			API::get()->log_info("cvars.dll: Line %d was %d long", LineNumber, Length);   
+			//API::get()->log_info("cvars.dll: Processing config line: %ls", Line);   
 
 			// Find the = sign index
 			for(i=0; i<Length; i++) {
