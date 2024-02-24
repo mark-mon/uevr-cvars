@@ -61,11 +61,11 @@ struct _CVAR_ITEM
 
 class CVarPlugin : public uevr::Plugin {
 public:
-	CVAR_ITEM* m_Head = NULL;
-	CVAR_ITEM* m_Current = NULL;
-	
+    CVAR_ITEM* m_Head = NULL;
+    CVAR_ITEM* m_Current = NULL;
+
     std::string m_Path;
-	
+
     CVarPlugin() = default;
 
     void on_dllmain(HANDLE handle) override {
@@ -180,7 +180,7 @@ public:
 		while (std::getline(fileStream, Line)) {
             LineNumber++;
 
-			Length = static_cast<int>(Line.length());
+            Length = static_cast<int>(Line.length());
 
 			if(Line[0] == '#') continue;
 			if(Line[0] == ' ') continue;
