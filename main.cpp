@@ -1,9 +1,16 @@
 #define  _CRT_SECURE_NO_WARNINGS 1
+#define  _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING 1
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
 #include <memory>
 #include <chrono>
+#include <string>
+#include <iostream>
+#include <fstream>
+#include <locale>
+#include <codecvt>
+
 
 #include "uevr/Plugin.hpp"
 
@@ -46,8 +53,8 @@ typedef struct _CVAR_ITEM CVAR_ITEM;
 
 struct _CVAR_ITEM
 {
-	wchar_t Command[MAX_ELEMENT_LEN];
-	wchar_t Value[MAX_ELEMENT_LEN];
+	std::wstring Command;
+	std::wstring Value;
 	ACTION_TYPE	Action;
 	CVAR_ITEM* Next;
 };
@@ -56,20 +63,17 @@ class CVarPlugin : public uevr::Plugin {
 public:
 	CVAR_ITEM* m_Head = NULL;
 	CVAR_ITEM* m_Current = NULL;
-	int	m_ConfigSize = 0;
-	bool m_ConfigRead = false;
 	
-    char m_Path[MAX_PATH_SIZE];
+    std::string m_Path;
 	
     CVarPlugin() = default;
 
     void on_dllmain(HANDLE handle) override {
-		ZeroMemory(m_Path, MAX_PATH_SIZE);
         StoreConfigFileLocation(handle);
     }
 
     void on_initialize() override {
-      API::get()->log_info("Cvar.dll: Config file should be: %s\n", m_Path);  
+      API::get()->log_info("Cvar.dll: Config file should be: %s\n", m_Path.c_str());  
 	  
       ReadConfig();
     }
@@ -91,47 +95,51 @@ public:
 	//***************************************************************************************************
 	void ApplyCvarScript() {
 		CVAR_ITEM* Item = m_Head;
+		CVAR_ITEM* Next = m_Head;
 		int i = 0;
 		
 		API::get()->log_info("ApplyCvarScript: Applying the cvars script");
 		while(Item != NULL) {
-			API::get()->log_info("ApplyCvarScript: Working on %ls=%ls", Item->Command, Item->Value);
+			API::get()->log_info("ApplyCvarScript: Working on %ls=%ls", Item->Command.c_str(), Item->Value.c_str());
 
             const auto console_manager = API::get()->get_console_manager();
 
-            if (console_manager != nullptr) {
-				if (console_manager != nullptr) {
+			if (console_manager != nullptr) {
+				
+				// Check for delay first
+				if(Item->Command == L"delay") {
+					int DelayValue = std::stoi(Item->Value);
+					API::get()->log_info("ApplyCvarScript: sleeping %d milliseconds", DelayValue);
+					Sleep(DelayValue);
 					
-					// Check for delay first
-					if(_wcsicmp(Item->Command, L"delay") == 0) {
-						wchar_t* EndPtr;
-						long DelayValue = wcstol(Item->Value, &EndPtr, 10);
-	
-						if (EndPtr != Item->Value) {
-							API::get()->log_info("ApplyCvarScript: sleeping %ld milliseconds", DelayValue);
-							
-							Sleep(DelayValue);
-						}
-						
-					// Check for exec command next.	
-					} else if(_wcsicmp(Item->Command, L"exec") == 0) {
-						API::get()->log_info("ApplyCvarScript: running exec command '%ls'", Item->Value);
-						API::get()->sdk()->functions->execute_command(Item->Value);
-						
-					// Check cvar next	
+				// Check for exec command next.	
+				} else if(Item->Command == L"exec") {
+					API::get()->log_info("ApplyCvarScript: running exec command '%ls'", Item->Value.c_str());
+					API::get()->sdk()->functions->execute_command(Item->Value.c_str());
+					
+				// Check cvar next	
+				} else {
+					auto cvar = console_manager->find_variable(Item->Command.c_str());
+					if (cvar == nullptr) {
+						API::get()->log_info("ApplyCvarScript: CVAR '%ls' is not found, so not applied", Item->Command.c_str());
 					} else {
-						auto cvar = console_manager->find_variable(Item->Command);
-						if (cvar == nullptr) {
-							API::get()->log_info("ApplyCvarScript: CVAR '%ls' is not found, so not applied", Item->Command);
-						} else {
-							API::get()->log_info("ApplyCvarScript: Setting cvar '%ls' to '%ls'", Item->Command, Item->Value);
-							cvar->set(Item->Value);
-						}
+						API::get()->log_info("ApplyCvarScript: Setting cvar '%ls' to '%ls'", Item->Command.c_str(), Item->Value.c_str());
+						cvar->set(Item->Value);
 					}
 				}
 			}
 			
 			Item = Item->Next;
+		}
+		
+		// We're done with the list, free it all up.
+		API::get()->log_info("ApplyCvarScript: freeing the list");
+		Item = m_Head;
+		while(Item != NULL)
+		{
+			Next = Item->Next;
+			free(Item);
+			Item = Next;
 		}
 		
 	}
@@ -140,62 +148,58 @@ public:
 	// Stores the path and file location of the cvar.txt config file.
 	//***************************************************************************************************
 	void StoreConfigFileLocation(HANDLE handle) {
-		int i = 0;
-		GetModuleFileName((HMODULE)handle, m_Path, MAX_PATH_SIZE);
-		for(i = (int)(strlen(m_Path) - 1); i>0; i--) {
-		  if(m_Path[i] == '\\') {
-			m_Path[i+1] = 0;
-			break;
-		  }
+		wchar_t wide_path[MAX_PATH]{};
+		if (GetModuleFileNameW((HMODULE)handle, wide_path, MAX_PATH)) {
+			const auto path = std::filesystem::path(wide_path).parent_path() / "cvars.txt";
+			m_Path = path.string(); // change m_Path to a std::string
 		}
-
-		strcat(m_Path, "cvars.txt");
-	}
-	
+	}	
 	
 	//***************************************************************************************************
 	// Reads the config file cvars.txt and stores it in a linked list of CVAR_ITEMs.
 	//***************************************************************************************************
     void ReadConfig() {
-		wchar_t Line[MAX_LINE_SIZE];
+		std::string Line;
+		
 		CVAR_ITEM* CvarItem;
-		int Numeric = 0;
-		int EqualsPosition = 0;
 		int Length = 0;
 		int i = 0;
         int LineNumber = 0;
+		size_t Pos = 0;
+		
+		std::wstring_convert<std::codecvt_utf8<wchar_t>> Converter;
 		
 
-		FILE* fp = fopen(m_Path,"r");
-		if (fp == NULL){
-			API::get()->log_info("cvars.dll: cvars.txt cannot be opened");
-			m_ConfigRead = true;
+		std::ifstream fileStream(m_Path.c_str());
+		if(!fileStream.is_open()) {
+			API::get()->log_error("cvars.dll: cvars.txt cannot be opened");
 			return;
 		}
+		
 			
-		while(!feof(fp)) {
+		while (std::getline(fileStream, Line)) {
             LineNumber++;
-			ZeroMemory(Line, sizeof(wchar_t) * MAX_LINE_SIZE);
-			if(fgetws(Line, MAX_LINE_SIZE-1, fp) == NULL) break;
 
-			Length = (int)wcslen(Line);
+			Length = static_cast<int>(Line.length());
 
-			if(Line[0] == L'#') continue;
+			if(Line[0] == '#') continue;
+			if(Line[0] == ' ') continue;
 			if(Length < 3) continue;
-			if(Line[0] == L' ') continue;
-
-			API::get()->log_info("cvars.dll: Line %d was %d long", LineNumber, Length);   
-			//API::get()->log_info("cvars.dll: Processing config line: %ls", Line);   
-
-			// Find the = sign index
-			for(i=0; i<Length; i++) {
-				if(Line[i] == L'=') break;
+			
+			// Strip  spaces, carriage returns from line.
+			Pos = Line.find_last_not_of(" \r\n");
+			if(Pos != std::string::npos) {
+				Line.erase(Pos + 1);
 			}
 
-			if(i+1 >= Length) {
+			Pos = Line.find('=');
+			if(Pos == std::string::npos) {
 				API::get()->log_info("cvars.dll: Invalid line, no = sign found or nothing after = found");   
 				continue;
 			}
+
+			//API::get()->log_info("cvars.dll: Line %d was %d long", LineNumber, Length);   
+			API::get()->log_info("cvars.dll: Processing config line: %s", Line.c_str());   
 
 			// At this point, we are convinced we have a valid entry, create a new CVAR_ITEM* to store it.
 			CvarItem = (CVAR_ITEM*)malloc(sizeof(CVAR_ITEM));	// Allocate new CVAR_ITEM to store this entry.
@@ -207,27 +211,17 @@ public:
 			CvarItem->Next = NULL;
 			
 			// variable i contains location in the string of the = sign.
-			wcsncpy(CvarItem->Command, Line, i);
-			wcsncpy(CvarItem->Value, &(Line[i+1]), MAX_ELEMENT_LEN);
+			CvarItem->Command = Converter.from_bytes(Line.substr(0, Pos));
+			CvarItem->Value = Converter.from_bytes(Line.substr(Pos + 1, MAX_ELEMENT_LEN));
 			
-			//Strip /r, /n, space off end of value.
-			for(i = (int)wcslen(CvarItem->Value)-1; i>0; i--) {
-				if(CvarItem->Value[i] == L'\r' || CvarItem->Value[i] == L'\n' || CvarItem->Value[i] == L' ')
-					CvarItem->Value[i] = 0;
-				else
-					break;
-			}
-			
-			// Log the type of entry.
-			if(_wcsicmp(CvarItem->Command, L"delay") == 0) CvarItem->Action = ACTION_DELAY;
-			else if(_wcsicmp(CvarItem->Command, L"exec") == 0) CvarItem->Action = ACTION_EXEC;
+			if(CvarItem->Command == L"delay") CvarItem->Action = ACTION_DELAY;
+			else if(CvarItem->Command == L"exec") CvarItem->Action = ACTION_EXEC;
 			else CvarItem->Action = ACTION_CVAR;
 			
-			m_ConfigSize++;
-			API::get()->log_info("cvars.dll: Added entry command: %ls, value: %ls, type:%d", CvarItem->Command, CvarItem->Value, CvarItem->Action);
+			API::get()->log_info("cvars.dll: Added entry command: %ls, value: %ls, type:%d", CvarItem->Command.c_str(), CvarItem->Value.c_str(), CvarItem->Action);
 		}		
-		fclose(fp);
-		m_ConfigRead = true;
+		
+		fileStream.close();
 	}
 
 
