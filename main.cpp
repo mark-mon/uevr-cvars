@@ -183,6 +183,8 @@ public:
             Length = static_cast<int>(Line.length());
 
 			if(Line[0] == '#') continue;
+			if(Line[0] == ';') continue;
+			if(Line[0] == '[') continue;
 			if(Line[0] == ' ') continue;
 			if(Length < 3) continue;
 			
