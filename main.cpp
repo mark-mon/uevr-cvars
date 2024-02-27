@@ -65,6 +65,7 @@ public:
     CVAR_ITEM* m_Current = NULL;
 
     std::string m_Path;
+    std::string m_EngineIniPath;
 
     CVarPlugin() = default;
 
@@ -75,7 +76,8 @@ public:
     void on_initialize() override {
       API::get()->log_info("Cvar.dll: Config file should be: %s\n", m_Path.c_str());  
 	  
-      ReadConfig();
+      ReadConfig(m_EngineIniPath);
+      ReadConfig(m_Path);
     }
   
     void on_pre_engine_tick(API::UGameEngine* engine, float delta) override {
@@ -152,13 +154,16 @@ public:
 		if (GetModuleFileNameW((HMODULE)handle, wide_path, MAX_PATH)) {
 			const auto path = std::filesystem::path(wide_path).parent_path() / "cvars.txt";
 			m_Path = path.string(); // change m_Path to a std::string
+
+			const auto path2 = std::filesystem::path(wide_path).parent_path() / "engine.ini";
+            m_EngineIniPath = path2.string();
 		}
 	}	
 	
 	//***************************************************************************************************
 	// Reads the config file cvars.txt and stores it in a linked list of CVAR_ITEMs.
 	//***************************************************************************************************
-    void ReadConfig() {
+    void ReadConfig(std::string ConfigFile) {
 		std::string Line;
 		
 		CVAR_ITEM* CvarItem;
@@ -169,10 +174,11 @@ public:
 		
 		std::wstring_convert<std::codecvt_utf8<wchar_t>> Converter;
 		
-
-		std::ifstream fileStream(m_Path.c_str());
+        
+        API::get()->log_info("cvars.dll: reading config file %s", ConfigFile.c_str());
+		std::ifstream fileStream(ConfigFile.c_str());
 		if(!fileStream.is_open()) {
-			API::get()->log_error("cvars.dll: cvars.txt cannot be opened");
+			API::get()->log_error("cvars.dll: %s cannot be opened or does not exist.", ConfigFile.c_str());
 			return;
 		}
 		
